@@ -15,8 +15,8 @@ WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 
-# Install dependencies with all devDependencies (not immutable, not production)
-RUN yarn install --production=false
+# Install dependencies (all deps including devDependencies)
+RUN yarn install
 
 # Copy source code
 COPY packages ./packages
