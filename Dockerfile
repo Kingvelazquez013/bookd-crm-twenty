@@ -23,7 +23,10 @@ COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
 RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
-# Fix deprecated TypeScript options in tsconfig.lib.json - remove entire lines containing these patterns
+# Install @prettier/sync for generateBarrels script (after packages copied)
+RUN cd packages/twenty-shared && yarn add @prettier/sync --dev
+
+# Fix deprecated TypeScript options in tsconfig.lib.json - remove entire lines
 RUN sed -i '/esModuleInterop/d' packages/twenty-shared/tsconfig.lib.json && \
     sed -i '/moduleResolution/d' packages/twenty-shared/tsconfig.lib.json
 
