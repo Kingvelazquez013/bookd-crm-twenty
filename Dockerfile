@@ -18,6 +18,9 @@ COPY .yarn ./.yarn
 # Install dependencies (all deps including devDependencies)
 RUN yarn install
 
+# Install missing dependency for generateBarrels script
+RUN cd packages/twenty-shared && yarn add @prettier/sync --dev
+
 # Copy source code
 COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
