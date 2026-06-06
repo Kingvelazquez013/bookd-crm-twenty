@@ -28,7 +28,8 @@ RUN cd packages/twenty-shared && yarn add @prettier/sync --dev
 
 # Fix deprecated TypeScript options in tsconfig.lib.json - remove entire lines
 RUN sed -i '/esModuleInterop/d' packages/twenty-shared/tsconfig.lib.json && \
-    sed -i '/moduleResolution/d' packages/twenty-shared/tsconfig.lib.json
+    sed -i '/moduleResolution/d' packages/twenty-shared/tsconfig.lib.json && \
+    cat packages/twenty-shared/tsconfig.lib.json
 
 # Build using the same process as CI - build twenty-shared first
 RUN npx nx build twenty-shared
