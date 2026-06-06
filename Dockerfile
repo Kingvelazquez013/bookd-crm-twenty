@@ -23,8 +23,9 @@ COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
 RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
-# Install missing dependency for generateBarrels script
-RUN cd packages/twenty-shared && yarn add @prettier/sync --dev
+# Fix deprecated TypeScript options in tsconfig.lib.json
+RUN sed -i 's/"esModuleInterop": false,//' packages/twenty-shared/tsconfig.lib.json && \
+    sed -i 's/"moduleResolution": "node10",//' packages/twenty-shared/tsconfig.lib.json
 
 # Build using the same process as CI - build twenty-shared first
 RUN npx nx build twenty-shared
