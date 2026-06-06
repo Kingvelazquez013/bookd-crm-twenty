@@ -1,11 +1,7 @@
 # book'd CRM — Custom Twenty Image with Managed AI Agents
 # 
-# This Dockerfile builds the Twenty CRM from source with book'd's custom agent definitions.
-# The source includes our custom agents at:
-#   packages/twenty-apps/internal/twenty-for-twenty/src/agents/bookd-managed-agents.ts
-#   packages/twenty-apps/internal/twenty-for-twenty/src/skills/bookd-crm-skills.ts
-#   packages/twenty-apps/internal/twenty-for-twenty/src/logic-functions/run-bookd-ai.ts
-#   packages/twenty-apps/internal/twenty-for-twenty/src/roles/default-role.ts
+# This Dockerfile builds the Twenty CRM server from source using the same process as CI.
+# The custom agents are included in the standard application constants.
 
 # Build stage
 FROM node:24-alpine AS builder
@@ -19,16 +15,15 @@ WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 
-# Install dependencies (without immutable for CI compatibility)
+# Install dependencies (using the same method as CI)
 RUN yarn install
 
 # Copy source code
 COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
-# Copy tools directory if it exists
 RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
-# Build the application
+# Build the application using the same process as CI
 RUN yarn build
 
 # Production stage
