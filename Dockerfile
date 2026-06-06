@@ -26,10 +26,15 @@ RUN if [ -d tools ]; then cp -r tools ./tools; fi
 # Install @prettier/sync for generateBarrels script (after packages copied)
 RUN cd packages/twenty-shared && yarn add @prettier/sync --dev
 
-# Fix deprecated TypeScript options in tsconfig.lib.json - remove entire lines
+# Fix deprecated TypeScript options in tsconfig.lib.json AND parent tsconfig.json
+# Remove deprecated options that cause TS5108 errors
 RUN sed -i '/esModuleInterop/d' packages/twenty-shared/tsconfig.lib.json && \
     sed -i '/moduleResolution/d' packages/twenty-shared/tsconfig.lib.json && \
-    cat packages/twenty-shared/tsconfig.lib.json
+    sed -i '/esModuleInterop/d' packages/twenty-shared/tsconfig.json && \
+    sed -i '/moduleResolution/d' packages/twenty-shared/tsconfig.json
+
+# Verify the fixes
+RUN cat packages/twenty-shared/tsconfig.lib.json && echo "---" && cat packages/twenty-shared/tsconfig.json
 
 # Build using the same process as CI - build twenty-shared first
 RUN npx nx build twenty-shared
