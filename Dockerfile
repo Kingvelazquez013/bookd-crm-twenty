@@ -22,10 +22,11 @@ COPY .yarn ./.yarn
 # Install dependencies
 RUN yarn install --immutable
 
-# Copy source code (tools directory may not exist, use || true)
+# Copy source code
 COPY packages ./packages
-COPY tools ./tools || true
 COPY nx.json tsconfig.base.json ./
+# Copy tools directory if it exists
+RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
 # Build the application
 RUN yarn build
