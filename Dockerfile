@@ -23,8 +23,9 @@ COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
 RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
-# Build the application using the same process as CI
-RUN yarn build
+# Build using the same process as CI
+RUN npx nx build twenty-shared
+RUN npx nx build twenty-server
 
 # Production stage
 FROM node:24-alpine AS production
