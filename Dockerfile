@@ -15,16 +15,18 @@ WORKDIR /app
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 
-# Install dependencies (using the same method as CI)
-RUN yarn install
+# Install dependencies with all devDependencies (not immutable, not production)
+RUN yarn install --production=false
 
 # Copy source code
 COPY packages ./packages
 COPY nx.json tsconfig.base.json ./
 RUN if [ -d tools ]; then cp -r tools ./tools; fi
 
-# Build using the same process as CI
+# Build using the same process as CI - build twenty-shared first
 RUN npx nx build twenty-shared
+
+# Build twenty-server
 RUN npx nx build twenty-server
 
 # Production stage
