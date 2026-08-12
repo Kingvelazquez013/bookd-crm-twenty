@@ -63,12 +63,13 @@ export class MessagingMessagesImportService {
     messageChannel: MessageChannelEntity,
     connectedAccount: ConnectedAccountEntity,
     workspaceId: string,
+    batchSize?: number,
   ) {
     let messageIdsToFetch: string[] = [];
 
-    const messagesGetBatchSize = this.twentyConfigService.get(
-      'MESSAGING_MESSAGES_GET_BATCH_SIZE',
-    );
+    const messagesGetBatchSize =
+      batchSize ??
+      this.twentyConfigService.get('MESSAGING_MESSAGES_GET_BATCH_SIZE');
 
     const authContext = buildSystemAuthContext(workspaceId);
 
@@ -108,7 +109,7 @@ export class MessagingMessagesImportService {
           );
 
           if (!messageIdsToFetch?.length) {
-            await this.messageChannelSyncStatusService.markAsCompletedAndMarkAsMessagesListFetchPending(
+            await this.messageChannelSyncStatusService.markAsMessageSyncCompleted(
               [messageChannel.id],
               workspaceId,
             );
@@ -214,7 +215,7 @@ export class MessagingMessagesImportService {
           }
 
           if (messageIdsToFetch.length < messagesGetBatchSize) {
-            await this.messageChannelSyncStatusService.markAsCompletedAndMarkAsMessagesListFetchPending(
+            await this.messageChannelSyncStatusService.markAsMessageSyncCompleted(
               [messageChannel.id],
               workspaceId,
             );

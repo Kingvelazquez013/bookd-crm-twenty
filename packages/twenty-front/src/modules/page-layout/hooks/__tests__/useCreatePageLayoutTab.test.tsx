@@ -16,6 +16,7 @@ import {
 } from './PageLayoutTestWrapper';
 
 jest.mock('uuid', () => ({
+  ...jest.requireActual('uuid'),
   v4: jest.fn(),
 }));
 
@@ -378,6 +379,8 @@ describe('useCreatePageLayoutTab', () => {
         objectMetadataId: null,
         tabs: [
           {
+            isSystemSideEffect: false,
+            universalIdentifier: 'universal-identifier-mock',
             id: 'existing-tab',
             applicationId: '',
             title: 'Existing Tab',

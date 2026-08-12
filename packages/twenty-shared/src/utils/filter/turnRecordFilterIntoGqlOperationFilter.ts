@@ -19,6 +19,7 @@ import {
   type RawJsonFilter,
   type RecordFilterValueDependencies,
   type RecordGqlOperationFilter,
+  type RelationType,
   type RelationFilter,
   type SelectFilter,
   type StringFilter,
@@ -52,14 +53,52 @@ import {
   type RecordFilter,
 } from '@/utils';
 import { arrayOfStringsOrVariablesSchema } from '@/utils/filter/utils/validation-schemas/arrayOfStringsOrVariablesSchema';
+import {
+  actorSourceFilterValueSchema,
+  booleanFilterValueSchema,
+  instantFilterValueSchema,
+  numericFilterValueSchema,
+  plainDateOrInstantFilterValueSchema,
+} from '@/utils/filter/utils/validation-schemas/filterValueScalarSchemas';
 import { arrayOfUuidOrVariableSchema } from '@/utils/filter/utils/validation-schemas/arrayOfUuidsOrVariablesSchema';
 import { jsonRelationFilterValueSchema } from '@/utils/filter/utils/validation-schemas/jsonRelationFilterValueSchema';
+import {
+  computeMorphRelationGqlFieldJoinColumnName,
+  computeRelationGqlFieldJoinColumnName,
+} from '@/utils/fieldMetadata/compute-relation-gql-field-join-column-name';
+
+const PHONE_FILTER_NON_SIGNIFICANT_CHARS = /(?!^)\+|[^0-9+]/g;
+
+const CONTAINS_DIGIT = /[0-9]/;
+
+const lenientBooleanFilterValueSchema = booleanFilterValueSchema.catch(false);
+
+const parseNumericFilterValue = (value: string): number => {
+  const parsed = numericFilterValueSchema.safeParse(value);
+
+  return parsed.success ? parsed.data : parseFloat(value);
+};
+
+const parseActorSourceFilterValue = (value: string): string[] => {
+  const parsed = actorSourceFilterValueSchema.safeParse(value);
+
+  return parsed.success ? parsed.data : (JSON.parse(value) as string[]);
+};
+
+type FieldSharedMorphRelation = {
+  type: RelationType;
+  targetObjectMetadata: {
+    nameSingular: string;
+    namePlural: string;
+  };
+};
 
 export type FieldShared = {
   id: string;
   name: string;
   type: FieldMetadataType;
   label: string;
+  morphRelations?: FieldSharedMorphRelation[] | null;
 };
 
 type TurnRecordFilterIntoRecordGqlOperationFilterParams = {
@@ -129,6 +168,39 @@ type BuildDirectFieldGqlOperationFilterParams = {
   filterValueDependencies: RecordFilterValueDependencies;
   recordFilter: Omit<RecordFilter, 'id'>;
   fieldMetadataItem: FieldShared;
+};
+
+const getRelationFilterJoinColumnName = ({
+  fieldMetadataItem,
+  filterValueDependencies,
+}: {
+  fieldMetadataItem: FieldShared;
+  filterValueDependencies: RecordFilterValueDependencies;
+}): string | undefined => {
+  if (fieldMetadataItem.type !== FieldMetadataType.MORPH_RELATION) {
+    return computeRelationGqlFieldJoinColumnName({
+      name: fieldMetadataItem.name,
+    });
+  }
+
+  const matchingMorphRelation = fieldMetadataItem.morphRelations?.find(
+    (morphRelation) =>
+      morphRelation.targetObjectMetadata.nameSingular ===
+      filterValueDependencies.currentRecord?.objectMetadataNameSingular,
+  );
+
+  if (!isDefined(matchingMorphRelation)) {
+    return;
+  }
+
+  return computeMorphRelationGqlFieldJoinColumnName({
+    fieldName: fieldMetadataItem.name,
+    relationType: matchingMorphRelation.type,
+    targetObjectMetadataNameSingular:
+      matchingMorphRelation.targetObjectMetadata.nameSingular,
+    targetObjectMetadataNamePlural:
+      matchingMorphRelation.targetObjectMetadata.namePlural,
+  });
 };
 
 const buildDirectFieldGqlOperationFilter = ({
@@ -441,19 +513,20 @@ const buildDirectFieldGqlOperationFilter = ({
         if (recordFilter.operand === RecordFilterOperand.IS) {
           const timeZone = filterValueDependencies.timeZone ?? 'UTC';
 
-          let parsedPlainDate = null;
+          const parsedDateTime = plainDateOrInstantFilterValueSchema.safeParse(
+            recordFilter.value,
+          );
 
-          try {
-            parsedPlainDate = recordFilter.value.includes('T')
-              ? Temporal.Instant.from(recordFilter.value)
-                  .toZonedDateTimeISO(timeZone)
-                  .toPlainDate()
-              : Temporal.PlainDate.from(recordFilter.value);
-          } catch {
+          if (!parsedDateTime.success) {
             throw new Error(
               `Cannot parse "${recordFilter.value}" for ${filterType} filter`,
             );
           }
+
+          const parsedPlainDate =
+            parsedDateTime.data instanceof Temporal.Instant
+              ? parsedDateTime.data.toZonedDateTimeISO(timeZone).toPlainDate()
+              : parsedDateTime.data;
 
           const zonedDateTime = parsedPlainDate.toZonedDateTime(timeZone);
           const start = zonedDateTime.toInstant();
@@ -475,7 +548,9 @@ const buildDirectFieldGqlOperationFilter = ({
           };
         }
 
-        const resolvedDateTime = Temporal.Instant.from(recordFilter.value);
+        const resolvedDateTime = instantFilterValueSchema.parse(
+          recordFilter.value,
+        );
 
         switch (recordFilter.operand) {
           case RecordFilterOperand.IS_AFTER: {
@@ -504,14 +579,18 @@ const buildDirectFieldGqlOperationFilter = ({
         case RecordFilterOperand.IS:
           return {
             [fieldMetadataItem.name]: {
-              eq: convertRatingToRatingValue(parseFloat(recordFilter.value)),
+              eq: convertRatingToRatingValue(
+                parseNumericFilterValue(recordFilter.value),
+              ),
             } as RatingFilter,
           };
         case RecordFilterOperand.IS_NOT:
           return {
             not: {
               [fieldMetadataItem.name]: {
-                eq: convertRatingToRatingValue(parseFloat(recordFilter.value)),
+                eq: convertRatingToRatingValue(
+                  parseNumericFilterValue(recordFilter.value),
+                ),
               } as RatingFilter,
             },
           };
@@ -519,7 +598,7 @@ const buildDirectFieldGqlOperationFilter = ({
           return {
             [fieldMetadataItem.name]: {
               in: convertGreaterThanOrEqualRatingToArrayOfRatingValues(
-                parseFloat(recordFilter.value),
+                parseNumericFilterValue(recordFilter.value),
               ),
             } as RatingFilter,
           };
@@ -527,7 +606,7 @@ const buildDirectFieldGqlOperationFilter = ({
           return {
             [fieldMetadataItem.name]: {
               in: convertLessThanOrEqualRatingToArrayOfRatingValues(
-                parseFloat(recordFilter.value),
+                parseNumericFilterValue(recordFilter.value),
               ),
             } as RatingFilter,
           };
@@ -541,26 +620,26 @@ const buildDirectFieldGqlOperationFilter = ({
         case RecordFilterOperand.GREATER_THAN_OR_EQUAL:
           return {
             [fieldMetadataItem.name]: {
-              gte: parseFloat(recordFilter.value),
+              gte: parseNumericFilterValue(recordFilter.value),
             } as FloatFilter,
           };
         case RecordFilterOperand.LESS_THAN_OR_EQUAL:
           return {
             [fieldMetadataItem.name]: {
-              lte: parseFloat(recordFilter.value),
+              lte: parseNumericFilterValue(recordFilter.value),
             } as FloatFilter,
           };
         case RecordFilterOperand.IS:
           return {
             [fieldMetadataItem.name]: {
-              eq: parseFloat(recordFilter.value),
+              eq: parseNumericFilterValue(recordFilter.value),
             } as FloatFilter,
           };
         case RecordFilterOperand.IS_NOT:
           return {
             not: {
               [fieldMetadataItem.name]: {
-                eq: parseFloat(recordFilter.value),
+                eq: parseNumericFilterValue(recordFilter.value),
               } as FloatFilter,
             },
           };
@@ -590,16 +669,25 @@ const buildDirectFieldGqlOperationFilter = ({
           ? [filterValueDependencies?.currentWorkspaceMemberId]
           : []),
         ...(isCurrentRecordSelected
-          ? [filterValueDependencies?.currentRecordId]
+          ? [filterValueDependencies.currentRecord?.id]
           : []),
       ].filter(isDefined);
 
       if (recordIds.length === 0) return;
 
+      const relationFilterJoinColumnName = getRelationFilterJoinColumnName({
+        fieldMetadataItem,
+        filterValueDependencies,
+      });
+
+      if (!isDefined(relationFilterJoinColumnName)) {
+        return;
+      }
+
       switch (recordFilter.operand) {
         case RecordFilterOperand.IS:
           return {
-            [fieldMetadataItem.name + 'Id']: {
+            [relationFilterJoinColumnName]: {
               in: recordIds,
             } as RelationFilter,
           };
@@ -609,13 +697,13 @@ const buildDirectFieldGqlOperationFilter = ({
             or: [
               {
                 not: {
-                  [fieldMetadataItem.name + 'Id']: {
+                  [relationFilterJoinColumnName]: {
                     in: recordIds,
                   } as RelationFilter,
                 },
               },
               {
-                [fieldMetadataItem.name + 'Id']: {
+                [relationFilterJoinColumnName]: {
                   is: 'NULL',
                 } as RelationFilter,
               },
@@ -672,19 +760,25 @@ const buildDirectFieldGqlOperationFilter = ({
           case RecordFilterOperand.GREATER_THAN_OR_EQUAL:
             return {
               [fieldMetadataItem.name]: {
-                amountMicros: { gte: parseFloat(recordFilter.value) * 1000000 },
+                amountMicros: {
+                  gte: parseNumericFilterValue(recordFilter.value) * 1000000,
+                },
               } as CurrencyFilter,
             };
           case RecordFilterOperand.LESS_THAN_OR_EQUAL:
             return {
               [fieldMetadataItem.name]: {
-                amountMicros: { lte: parseFloat(recordFilter.value) * 1000000 },
+                amountMicros: {
+                  lte: parseNumericFilterValue(recordFilter.value) * 1000000,
+                },
               } as CurrencyFilter,
             };
           case RecordFilterOperand.IS:
             return {
               [fieldMetadataItem.name]: {
-                amountMicros: { eq: parseFloat(recordFilter.value) * 1000000 },
+                amountMicros: {
+                  eq: parseNumericFilterValue(recordFilter.value) * 1000000,
+                },
               } as CurrencyFilter,
             };
           case RecordFilterOperand.IS_NOT:
@@ -692,7 +786,7 @@ const buildDirectFieldGqlOperationFilter = ({
               not: {
                 [fieldMetadataItem.name]: {
                   amountMicros: {
-                    eq: parseFloat(recordFilter.value) * 1000000,
+                    eq: parseNumericFilterValue(recordFilter.value) * 1000000,
                   },
                 } as CurrencyFilter,
               },
@@ -967,9 +1061,9 @@ const buildDirectFieldGqlOperationFilter = ({
             };
           } else {
             if (subFieldName === 'addressCountry') {
-              const parsedCountryCodes = JSON.parse(
+              const parsedCountryCodes = arrayOfStringsOrVariablesSchema.parse(
                 recordFilter.value,
-              ) as string[];
+              );
 
               if (
                 recordFilter.value === '[]' ||
@@ -984,7 +1078,7 @@ const buildDirectFieldGqlOperationFilter = ({
                     not: {
                       [fieldMetadataItem.name]: {
                         addressCountry: {
-                          in: JSON.parse(recordFilter.value),
+                          in: parsedCountryCodes,
                         } as AddressFilter,
                       },
                     },
@@ -1175,7 +1269,9 @@ const buildDirectFieldGqlOperationFilter = ({
               return;
             }
 
-            const parsedSources = JSON.parse(recordFilter.value) as string[];
+            const parsedSources = parseActorSourceFilterValue(
+              recordFilter.value,
+            );
 
             return {
               [fieldMetadataItem.name]: {
@@ -1190,7 +1286,9 @@ const buildDirectFieldGqlOperationFilter = ({
               return;
             }
 
-            const parsedSources = JSON.parse(recordFilter.value) as string[];
+            const parsedSources = parseActorSourceFilterValue(
+              recordFilter.value,
+            );
 
             if (parsedSources.length === 0) return;
 
@@ -1347,9 +1445,11 @@ const buildDirectFieldGqlOperationFilter = ({
     }
     case 'PHONES': {
       if (!isSubFieldFilter) {
-        const filterValue = recordFilter.value.replace(/[^0-9]/g, '');
+        const filterValue = recordFilter.value
+          .trim()
+          .replace(PHONE_FILTER_NON_SIGNIFICANT_CHARS, '');
 
-        if (!isNonEmptyString(filterValue)) {
+        if (!CONTAINS_DIGIT.test(filterValue)) {
           return;
         }
 
@@ -1535,7 +1635,7 @@ const buildDirectFieldGqlOperationFilter = ({
     case 'BOOLEAN': {
       return {
         [fieldMetadataItem.name]: {
-          eq: recordFilter.value === 'true',
+          eq: lenientBooleanFilterValueSchema.parse(recordFilter.value),
         } as BooleanFilter,
       };
     }

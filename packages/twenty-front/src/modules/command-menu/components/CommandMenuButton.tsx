@@ -4,12 +4,8 @@ import { type MessageDescriptor } from '@lingui/core';
 import { type MouseEvent } from 'react';
 import { type Nullable } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
-import {
-  AppTooltip,
-  type IconComponent,
-  TooltipDelay,
-  TooltipPosition,
-} from 'twenty-ui/display';
+import { type IconComponent } from 'twenty-ui/icon';
+import { AppTooltip, TooltipDelay, TooltipPosition } from 'twenty-ui/surfaces';
 import { Button, IconButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -28,6 +24,8 @@ export type CommandMenuButtonProps = {
   onClick?: (event?: MouseEvent<HTMLElement>) => void;
   to?: string;
   disabled?: boolean;
+  isPrimaryAction?: boolean;
+  shouldHideLabel?: boolean;
 };
 
 export const CommandMenuButton = ({
@@ -35,14 +33,18 @@ export const CommandMenuButton = ({
   onClick,
   to,
   disabled = false,
+  isPrimaryAction = false,
+  shouldHideLabel = false,
 }: CommandMenuButtonProps) => {
   const resolvedLabel = getCommandMenuItemLabel(command.label);
 
-  const resolvedShortLabel = isDefined(command.shortLabel)
-    ? getCommandMenuItemLabel(command.shortLabel)
-    : undefined;
+  const resolvedShortLabel =
+    isDefined(command.shortLabel) && !shouldHideLabel
+      ? getCommandMenuItemLabel(command.shortLabel)
+      : undefined;
 
-  const buttonAccent = command.isPrimaryCTA ? 'blue' : 'default';
+  const buttonAccent =
+    isPrimaryAction || command.isPrimaryCTA === true ? 'blue' : 'default';
 
   return (
     <>
@@ -50,7 +52,7 @@ export const CommandMenuButton = ({
         <Button
           Icon={command.Icon}
           size="small"
-          variant="secondary"
+          variant="primary"
           accent={buttonAccent}
           to={to}
           onClick={onClick}
@@ -63,7 +65,7 @@ export const CommandMenuButton = ({
           <IconButton
             Icon={command.Icon}
             size="small"
-            variant="secondary"
+            variant={buttonAccent === 'blue' ? 'primary' : 'tertiary'}
             accent={buttonAccent}
             to={to}
             onClick={onClick}
